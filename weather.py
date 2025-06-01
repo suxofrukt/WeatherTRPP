@@ -7,7 +7,10 @@ from aiogram.types import Message
 from aiogram.filters import Command
 from dotenv import load_dotenv
 from weather_api import get_weather, get_forecast
+from database import get_pool, save_request
+from datetime import datetime
 
+pool = None
 # Загружаем токены из .env
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -57,6 +60,8 @@ async def weather_command(message: Message):
     city = args[1]
     weather_info = await get_weather(city)
     await message.answer(weather_info)
+    await save_request(pool, message.from_user.username, city, datetime.now())
+
 
 @dp.message(Command("forecast"))
 async def forecast_command(message: Message):
@@ -68,12 +73,16 @@ async def forecast_command(message: Message):
     city = args[1]
     forecast_info = await get_forecast(city)
     await message.answer(forecast_info)
+    await save_request(pool, message.from_user.username, city, datetime.now())
 
 
-# Запуск бота
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    import asyncio
+
+    async def main():
+        global pool
+        pool = await get_pool()
+        await dp.start_polling(bot)
+
     asyncio.run(main())
