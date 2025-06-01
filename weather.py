@@ -10,6 +10,7 @@ from weather_api import get_weather, get_forecast
 from database import get_pool, save_request
 from datetime import datetime
 
+
 pool = None
 # Загружаем токены из .env
 load_dotenv()
