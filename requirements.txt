@@ -2,3 +2,9 @@ aiogram==3.3.0
 requests
 python-dotenv
 asyncpg
+fastapi
+uvicorn
+asyncpg
+python-dotenv
+requests
+aiogram
