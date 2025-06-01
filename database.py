@@ -5,12 +5,6 @@ import asyncpg
 load_dotenv()
 
 async def get_pool():
-    print("🔍 HOST =", os.getenv("POSTGRES_HOST"))
-    print("🔍 USER =", os.getenv("POSTGRES_USER"))
-    print("🔍 PASS =", os.getenv("POSTGRES_PASSWORD"))
-    print("🔍 PORT =", os.getenv("POSTGRES_PORT"))
-    print("🔍 DB   =", os.getenv("POSTGRES_DB"))
-
     return await asyncpg.create_pool(
         user=os.getenv("POSTGRES_USER"),
         password=os.getenv("POSTGRES_PASSWORD"),
