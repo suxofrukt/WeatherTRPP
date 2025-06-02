@@ -1,8 +1,11 @@
 import os
 from dotenv import load_dotenv
 import asyncpg
+import datetime
+import logging
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 async def get_pool():
     return await asyncpg.create_pool(
@@ -32,18 +35,25 @@ async def get_history(pool, username):
         """, username)
         return rows
 
-async def add_subscription(pool, user_id: int, city: str, notification_time: str = "08:00:00", timezone: str = "UTC"):
+async def add_subscription(pool, user_id: int, city: str, notification_time_str: str = "08:00:00", timezone: str = "UTC"):
+    # Преобразуем строку времени в объект datetime.time
+    try:
+        time_parts = list(map(int, notification_time_str.split(':')))
+        time_obj = datetime.time(hour=time_parts[0], minute=time_parts[1], second=time_parts[2] if len(time_parts) > 2 else 0)
+    except ValueError:
+        logger.error(f"Invalid time string format for notification_time: {notification_time_str}")
+        raise ValueError(f"Invalid time format: {notification_time_str}. Expected HH:MM:SS or HH:MM")
+
+
     async with pool.acquire() as conn:
-        # Проверяем, существует ли уже такая подписка, и если да, активируем её
-        # или обновляем (если нужно будет менять время/таймзону в будущем)
         await conn.execute("""
             INSERT INTO subscriptions (user_id, city, notification_time, timezone, is_active)
-            VALUES ($1, $2, $3::TIME, $4, TRUE)
+            VALUES ($1, $2, $3, $4, TRUE) -- Убираем ::TIME, так как передаем уже объект datetime.time
             ON CONFLICT (user_id, city) DO UPDATE
             SET notification_time = EXCLUDED.notification_time,
                 timezone = EXCLUDED.timezone,
                 is_active = TRUE;
-        """, user_id, city, notification_time, timezone)
+        """, user_id, city, time_obj, timezone)
 
 async def remove_subscription(pool, user_id: int, city: str):
     async with pool.acquire() as conn:
