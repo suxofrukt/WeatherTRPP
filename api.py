@@ -1,9 +1,7 @@
 import os
 import logging
-import requests
-import asyncio
 from fastapi import FastAPI, Request
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, Router
 from aiogram.types import Message, Update
 from aiogram.filters import Command
 from dotenv import load_dotenv
@@ -11,30 +9,33 @@ from weather_api import get_weather, get_forecast
 from database import get_pool, save_request
 from datetime import datetime
 
-# Загружаем переменные окружения
+# 📀 Загрузка переменных окружения
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# Настройка логов
+# 🔧 Логирование
 logging.basicConfig(level=logging.INFO)
 
-# Создаем FastAPI-приложение
+# 🚀 Создание FastAPI-приложения
 app = FastAPI()
 
-# Создаем бота и диспетчер
+# 🔊 Настройка бота
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+router = Router()
+dp.include_router(router)
 
-# Глобальный connection pool
+# 📆 Глобальный connection pool
 pool = None
 
-# 👇 Хендлеры команд
-@dp.message(Command("start"))
+# 📄 Хендлер /start
+@router.message(Command("start"))
 async def start_command(message: Message):
-    await message.answer("Привет! Напиши /weather <город>, чтобы узнать погоду.\nПример: `/weather Москва`")
+    await message.answer("\u041f\u0440\u0438\u0432\u0435\u0442! \u041d\u0430\u043f\u0438\u0448\u0438 /weather <\u0433\u043e\u0440\u043e\u0434>, \u0447\u0442\u043e\u0431\u044b \u0443\u0437\u043d\u0430\u0442\u044c \u043f\u043e\u0433\u043e\u0434\u0443.\n\u041f\u0440\u0438\u043c\u0435\u0440: `/weather \u041c\u043e\u0441\u043a\u0432\u0430`")
 
-@dp.message(Command("weather"))
+# 📄 Хендлер /weather
+@router.message(Command("weather"))
 async def weather_command(message: Message):
     global pool
     if not pool:
@@ -42,7 +43,7 @@ async def weather_command(message: Message):
 
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        await message.answer("Напиши команду в формате: `/weather Москва`")
+        await message.answer("\u041d\u0430\u043f\u0438\u0448\u0438 \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435: `/weather \u041c\u043e\u0441\u043a\u0432\u0430`")
         return
 
     city = args[1]
@@ -50,7 +51,8 @@ async def weather_command(message: Message):
     await message.answer(weather_info)
     await save_request(pool, message.from_user.username, city, datetime.now())
 
-@dp.message(Command("forecast"))
+# 📄 Хендлер /forecast
+@router.message(Command("forecast"))
 async def forecast_command(message: Message):
     global pool
     if not pool:
@@ -58,7 +60,7 @@ async def forecast_command(message: Message):
 
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        await message.answer("Напиши команду в формате: `/forecast Москва`")
+        await message.answer("\u041d\u0430\u043f\u0438\u0448\u0438 \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435: `/forecast \u041c\u043e\u0441\u043a\u0432\u0430`")
         return
 
     city = args[1]
@@ -66,7 +68,7 @@ async def forecast_command(message: Message):
     await message.answer(forecast_info)
     await save_request(pool, message.from_user.username, city, datetime.now())
 
-# 👇 Обработчик входящих обновлений (webhook)
+# 📈 Webhook-обработчик
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     body = await request.json()
@@ -74,9 +76,9 @@ async def telegram_webhook(request: Request):
     await dp.feed_update(bot, update)
     return {"ok": True}
 
-# 👇 Инициализация connection pool при старте FastAPI
+# 🚀 Инициализация при старте
 @app.on_event("startup")
 async def on_startup():
     global pool
     pool = await get_pool()
-    print("🚀 API запущен, pool создан")
+    print("\ud83d\ude80 API запущен, pool создан")
