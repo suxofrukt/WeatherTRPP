@@ -21,3 +21,12 @@ async def save_request(pool, username, city, dt):
             "INSERT INTO weather_requests (username, city, request_time) VALUES ($1, $2, $3)",
             username, city, dt
         )
+
+async def get_history(pool, username):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT city, timestamp FROM requests WHERE username = $1 ORDER BY timestamp DESC",
+            username
+        )
+        return rows
+
