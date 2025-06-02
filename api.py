@@ -72,9 +72,11 @@ async def forecast_command(message: Message):
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     body = await request.json()
-    update = Update.model_validate(body)
+    print("Входящее обновление:", body)
+    update = Update(**body)
     await dp.feed_update(bot, update)
     return {"ok": True}
+
 
 #  Инициализация при старте
 @app.on_event("startup")
