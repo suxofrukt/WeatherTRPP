@@ -86,7 +86,7 @@ async def history_command(message: Message):
         await message.answer("История запросов пуста.")
         return
 
-    history_text = "\n".join([f"📍 {r['city']} — {r['timestamp'].strftime('%Y-%m-%d %H:%M')}" for r in rows])
+    history_text = "\n".join([f"📍 {r['city']} — {r['request_time'].strftime('%Y-%m-%d %H:%M')}" for r in rows])
     await message.answer(f"🕘 История запросов:\n{history_text}")
 
 @app.get("/")
