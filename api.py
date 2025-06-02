@@ -70,6 +70,7 @@ async def forecast_command(message: Message):
 
 @router.message(Command("history"))
 async def history_command(message: Message):
+    print(">>> СРАБОТАЛ ХЕНДЛЕР /history")
     global pool
     if not pool:
         pool = await get_pool()
