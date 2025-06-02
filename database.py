@@ -24,9 +24,12 @@ async def save_request(pool, username, city, dt):
 
 async def get_history(pool, username):
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT city, timestamp FROM requests WHERE username = $1 ORDER BY timestamp DESC",
-            username
-        )
+        rows = await conn.fetch("""
+            SELECT city, request_time FROM weather_requests
+            WHERE username = $1
+            ORDER BY request_time DESC
+            LIMIT 10
+        """, username)
         return rows
+
 
