@@ -32,4 +32,41 @@ async def get_history(pool, username):
         """, username)
         return rows
 
+async def add_subscription(pool, user_id: int, city: str, notification_time: str = "08:00:00", timezone: str = "UTC"):
+    async with pool.acquire() as conn:
+        # Проверяем, существует ли уже такая подписка, и если да, активируем её
+        # или обновляем (если нужно будет менять время/таймзону в будущем)
+        await conn.execute("""
+            INSERT INTO subscriptions (user_id, city, notification_time, timezone, is_active)
+            VALUES ($1, $2, $3::TIME, $4, TRUE)
+            ON CONFLICT (user_id, city) DO UPDATE
+            SET notification_time = EXCLUDED.notification_time,
+                timezone = EXCLUDED.timezone,
+                is_active = TRUE;
+        """, user_id, city, notification_time, timezone)
 
+async def remove_subscription(pool, user_id: int, city: str):
+    async with pool.acquire() as conn:
+        # Деактивируем подписку, а не удаляем, чтобы сохранить историю
+        await conn.execute("""
+            UPDATE subscriptions SET is_active = FALSE
+            WHERE user_id = $1 AND city = $2;
+        """, user_id, city)
+
+async def get_user_subscriptions(pool, user_id: int):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT city, notification_time, timezone FROM subscriptions
+            WHERE user_id = $1 AND is_active = TRUE;
+        """, user_id)
+        return rows
+
+async def get_active_subscriptions_for_notification(pool, current_utc_time_str: str):
+    #Получает подписки, для которых пришло время уведомления.
+    #Сравнивает время без учета даты.
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT user_id, city FROM subscriptions
+            WHERE is_active = TRUE AND notification_time = $1::TIME;
+        """, current_utc_time_str)
+        return rows

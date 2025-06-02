@@ -8,3 +8,4 @@ asyncpg
 python-dotenv
 requests
 aiogram
+apscheduler
