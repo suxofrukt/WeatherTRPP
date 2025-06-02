@@ -66,6 +66,10 @@ async def forecast_command(message: Message):
     await message.answer(forecast_info)
     await save_request(pool, message.from_user.username, city, datetime.now())
 
+@app.get("/")
+async def root():
+    return {"status": "alive"}
+
 # Webhook
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
