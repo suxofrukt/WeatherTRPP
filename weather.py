@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from weather_api import get_weather, get_forecast
 from database import get_pool, save_request
 from datetime import datetime
+from aiogram.types import Message
+from database import get_history
 
 
 pool = None
@@ -76,6 +78,26 @@ async def forecast_command(message: Message):
     await message.answer(forecast_info)
     await save_request(pool, message.from_user.username, city, datetime.now())
 
+@dp.message(Command("history"))
+async def history_command(message: Message):
+    print(">>> СРАБОТАЛ ХЕНДЛЕР /history")
+    global pool
+    if not pool:
+        pool = await get_pool()
+
+    username = message.from_user.username
+    if not username:
+        await message.answer("У вас не установлен username в Telegram.")
+        return
+
+    rows = await get_history(pool, username)
+
+    if not rows:
+        await message.answer("История запросов пуста.")
+        return
+
+    history_text = "\n".join([f"📍 {r['city']} — {r['timestamp'].strftime('%Y-%m-%d %H:%M')}" for r in rows])
+    await message.answer(f"🕘 История запросов:\n{history_text}")
 
 
 if __name__ == '__main__':
