@@ -308,6 +308,7 @@ async def process_new_city_for_subscription(message: Message, state: FSMContext)
 # Callback для кнопок "Настроить" или "Оставить по умолчанию"
 @router.callback_query(F.data.startswith("cfgtime_") | F.data.startswith("cfgdef_"))
 async def handle_subscription_config_start(callback_query: types.CallbackQuery, state: FSMContext):
+    logger.info(f">>> CB: handle_subscription_config_start - Data: {callback_query.data}")
     await callback_query.answer()
     action, city_name = callback_query.data.split("_", 1)
 
@@ -332,6 +333,8 @@ async def handle_subscription_config_start(callback_query: types.CallbackQuery, 
 # Шаг 2 настройки: выбор таймзоны
 @router.callback_query(F.data.startswith("tz_"), WeatherStates.choosing_timezone)  # Добавили фильтр по состоянию
 async def process_timezone_choice_for_config(callback_query: types.CallbackQuery, state: FSMContext):
+    logger.info(
+        f">>> CB: process_timezone_choice_for_config - Data: {callback_query.data}, State: {await state.get_state()}")
     await callback_query.answer()
     selected_timezone_iana = callback_query.data.split("_", 1)[1]
 
@@ -421,9 +424,113 @@ async def cb_process_unsubscribe_city(callback_query: types.CallbackQuery,
         await callback_query.message.edit_text("Ошибка при отписке. Попробуйте позже.")
 
 
-# Хендлер для текстовой кнопки "➖ Отписаться от города" (если нужна)
-# @router.message(F.text == "➖ Отписаться от города") ...
-# @router.message(WeatherStates.waiting_for_city_unsubscribe, F.text) ...
+@router.callback_query(F.data == "cfg_back_main")
+async def cb_back_to_main_menu_from_subs_list(callback_query: types.CallbackQuery, state: FSMContext):
+    logger.info(">>> CB: cb_back_to_main_menu_from_subs_list called")
+    await callback_query.answer()
+    await state.clear()
+    try:
+        await callback_query.message.edit_text("Вы вернулись в главное меню.")
+    except Exception as e:
+        logger.warning(f"Could not edit message for cb_back_to_main_menu_from_subs_list: {e}")
+        # Если редактирование не удалось, новое сообщение все равно будет отправлено ниже
+    # Отправляем ReplyKeyboard главного меню
+    await bot.send_message(callback_query.from_user.id, "Выберите действие:", reply_markup=main_menu_keyboard())
+
+# Хендлер для текстовой кнопки "➖ Отписаться от города"
+@router.message(F.text == "➖ Отписаться от города", flags={"description": "Начать процесс отписки от города"})
+async def ask_for_city_to_unsubscribe_text(message: Message, state: FSMContext):
+    logger.info(f"User {message.from_user.id} pressed '➖ Отписаться от города' text button.")
+    await state.clear()  # Сбрасываем предыдущее состояние на всякий случай
+
+    global pool
+    if not pool:
+        pool = await get_pool()
+
+    user_id = message.from_user.id
+    try:
+        subscriptions = await get_user_subscriptions(pool, user_id)  # Эта функция должна возвращать список подписок
+
+        if not subscriptions:
+            await message.answer("У вас нет активных подписок для отмены.",
+                                 reply_markup=subscriptions_menu_keyboard())  # Или main_menu_keyboard()
+            return
+
+        # Формируем список городов для подсказки
+        city_names = [sub['city'] for sub in subscriptions]
+        subs_list_text = "\n".join([f"- {name}" for name in city_names])
+
+        await state.set_state(WeatherStates.waiting_for_city_unsubscribe)
+        await message.answer(
+            f"От какого города вы хотите отписаться?\nВаши текущие подписки:\n{subs_list_text}\n\n"
+            "Пожалуйста, введите название города точно так, как оно указано в списке, или нажмите '◀️ Назад в меню'.",
+            reply_markup=back_keyboard()  # Клавиатура с кнопкой "Назад в меню"
+        )
+    except Exception as e:
+        logger.error(f"Error in ask_for_city_to_unsubscribe_text for user {user_id}: {e}", exc_info=True)
+        await message.answer("Произошла ошибка при попытке начать отписку. Попробуйте позже.",
+                             reply_markup=main_menu_keyboard())
+
+
+@router.message(WeatherStates.waiting_for_city_unsubscribe, F.text)
+async def process_city_for_unsubscription_text(message: Message, state: FSMContext):
+    """
+    Этот хендлер обрабатывает текстовый ввод города от пользователя,
+    когда бот находится в состоянии ожидания города для отписки.
+    """
+    city_to_unsubscribe_input = message.text.strip()
+    user_id = message.from_user.id
+    logger.info(
+        f"User {user_id} entered '{city_to_unsubscribe_input}' for unsubscription. State: {await state.get_state()}")
+
+    if city_to_unsubscribe_input == "◀️ Назад в меню":
+        await state.clear()
+        # Решаем, куда вернуть пользователя. Если он пришел из меню подписок, то туда.
+        # Если нет, то в главное меню. Для простоты - в главное.
+        await message.answer("Отписка отменена. Вы вернулись в главное меню.",
+                             reply_markup=main_menu_keyboard())
+        return
+
+    if not city_to_unsubscribe_input:
+        await message.reply(
+            "Название города не может быть пустым. Пожалуйста, введите город для отписки или вернитесь в меню.",
+            reply_markup=back_keyboard())
+        return  # Остаемся в том же состоянии
+
+    global pool
+    if not pool:
+        pool = await get_pool()
+
+    try:
+        # Важно: нужно проверить, что введенный город действительно есть в подписках пользователя,
+        # чтобы избежать попытки удалить несуществующую подписку или подписку на чужой город (хотя user_id защищает).
+        current_subscriptions = await get_user_subscriptions(pool, user_id)
+        found_subscription_city = None
+        for sub in current_subscriptions:
+            if sub['city'].lower() == city_to_unsubscribe_input.lower():
+                found_subscription_city = sub['city']  # Берем точное имя из БД для удаления
+                break
+
+        if not found_subscription_city:
+            await message.reply(
+                f"У вас нет активной подписки на город '{city_to_unsubscribe_input}'. "
+                "Пожалуйста, проверьте название и попробуйте снова, или вернитесь в меню.",
+                reply_markup=back_keyboard()
+            )
+            return  # Остаемся в том же состоянии
+
+        await remove_subscription(pool, user_id, found_subscription_city)  # Используем точное имя
+        await message.answer(
+            f"🗑 Вы успешно отписались от уведомлений для г. {found_subscription_city}.",
+            reply_markup=main_menu_keyboard()  # Возвращаем в главное меню
+        )
+    except Exception as e:
+        logger.error(f"Error during text unsubscription for user {user_id}, city '{city_to_unsubscribe_input}': {e}",
+                     exc_info=True)
+        await message.answer("Произошла ошибка во время отписки. Попробуйте позже.",
+                             reply_markup=main_menu_keyboard())
+    finally:
+        await state.clear()
 
 
 async def show_history(message: Message):  # Убери state: FSMContext, если он не используется
