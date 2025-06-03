@@ -401,6 +401,22 @@ async def process_new_city_for_subscription(message: Message, state: FSMContext)
         await message.answer("Ошибка при добавлении подписки. Попробуйте позже.", reply_markup=main_menu_keyboard())
         await state.clear()
 
+@router.message(WeatherStates.choosing_timezone, F.text == "◀️ Назад к списку городов")
+async def back_to_city_list_from_timezone_choice(message: Message, state: FSMContext):
+    logger.info(f">>> User {message.from_user.id} pressed '◀️ Назад к списку городов' from choosing_timezone state.")
+    # Логика возврата к списку городов (похожа на ту, что в process_city_management_action)
+    global pool
+    if not pool: pool = await get_pool()
+    subscriptions = await get_user_subscriptions(pool, message.from_user.id)
+    if subscriptions:
+        await state.set_state(WeatherStates.managing_subscription_city_choice)
+        subscribed_city_names = [sub['city'] for sub in subscriptions]
+        await state.update_data(subscribed_cities=subscribed_city_names)
+        await message.answer("Выберите город для управления подпиской:", # Отправляем новую ReplyKeyboard
+                             reply_markup=subscribed_cities_keyboard(subscriptions))
+    else:
+        await state.clear()
+        await message.answer("У вас больше нет подписок.", reply_markup=main_menu_keyboard())
 
 # Callback для кнопок "Настроить" или "Оставить по умолчанию"
 @router.callback_query(F.data.startswith("cfgtime_") | F.data.startswith("cfgdef_"))
