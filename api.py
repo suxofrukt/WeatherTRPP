@@ -120,8 +120,8 @@ def subscriptions_list_actions_keyboard(subscriptions: list):  # Клавиат�
         display_text = f"🏙️ {city} (утром в {time_str} по поясу {tz_str} + осадки)"
         buttons.append([InlineKeyboardButton(text=display_text, callback_data="noop")])  # noop - просто информация
         buttons.append([
-            InlineKeyboardButton(text=f"⚙️ Настроить {city}", callback_data=f"cfgtime_{city}"),
-            InlineKeyboardButton(text=f"➖ Отписаться от {city}", callback_data=f"unsub_{city}")
+            InlineKeyboardButton(text=f"⚙️ Настр. {city}", callback_data=f"cfgtime_{city}"),
+            InlineKeyboardButton(text=f"➖ Отпис. {city}", callback_data=f"unsub_{city}")
         ])
         buttons.append([InlineKeyboardButton(text="-" * 20, callback_data="noop")])  # Разделитель
 
@@ -189,7 +189,7 @@ async def cb_ask_city_to_subscribe(callback_query: types.CallbackQuery, state: F
 
 # Хендлер для текстовой кнопки "➕ Подписаться на город"
 @router.message(F.text == "➕ Подписаться на город")
-async def text_ask_city_to_subscribe(message: Message, state: FSMContext):
+async def ask_city_to_subscribe(message: Message, state: FSMContext):
     await state.set_state(WeatherStates.waiting_for_city_subscribe)
     await message.answer("Введите название города для новой подписки.\nВы будете получать:\n"
                          "- Ежедневный прогноз в 08:00 (настраивается).\n"
@@ -291,6 +291,9 @@ async def process_timezone_choice_for_config(callback_query: types.CallbackQuery
         "Шаг 2: Введите желаемое время для утренних уведомлений в формате ЧЧ:ММ (например, 07:30)."
     )
 
+@router.callback_query(F.data == "noop")
+async def noop_callback(cb: types.CallbackQuery):
+    await cb.answer()
 
 # Шаг 3 настройки: ввод времени
 @router.message(WeatherStates.entering_notification_time, F.text)
