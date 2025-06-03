@@ -407,6 +407,7 @@ async def process_new_city_for_subscription(message: Message, state: FSMContext)
 async def handle_subscription_config_start(callback_query: types.CallbackQuery, state: FSMContext):
     logger.info(f">>> CB: handle_subscription_config_start - Data: {callback_query.data}")
     await callback_query.answer()
+    logger.info(f"State SET to: {await state.get_state()} before showing timezone keyboard")
     action, city_name = callback_query.data.split("_", 1)
 
     if action == "cfgdef":
