@@ -753,7 +753,7 @@ async def send_precipitation_alert() -> None:
         try:
             alert_text = await check_for_precipitation_in_forecast(
                 city,
-                min_lead_minutes=30,
+                min_lead_minutes=0,
                 max_lead_minutes=120
             )
         except Exception as e:
