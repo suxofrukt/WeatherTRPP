@@ -836,12 +836,12 @@ async def on_startup_combined():
     logger.info("Scheduler: Job 'every_minute_check_for_local_morning' set (every minute).")
 
     # ЗАДАЧА 2: Уведомления об ухудшении погоды (проверка каждый час в XX:05 UTC)
-    scheduler.add_job(
-        send_precipitation_alert,
-        CronTrigger(minute="*/15", timezone=pytz.utc),  # ← каждые 15 мин
-        id="precipitation_check_15m",
-        replace_existing=True
-    )
+    # scheduler.add_job(
+    #     send_precipitation_alert,
+    #     CronTrigger(minute="*/15", timezone=pytz.utc),  # ← каждые 15 мин
+    #     id="precipitation_check_15m",
+    #     replace_existing=True
+    # )
     logger.info("Scheduler: Job 'hourly_precipitation_check' set (every hour at XX:05 UTC).")
 
     if not scheduler.running:
