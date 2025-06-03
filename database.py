@@ -14,7 +14,8 @@ async def get_pool():
         database=os.getenv("POSTGRES_DB"),
         host=os.getenv("POSTGRES_HOST"),
         port=int(os.getenv("POSTGRES_PORT")),
-        ssl="require"
+        ssl="require",
+        statement_cache_size=0
     )
 
 
