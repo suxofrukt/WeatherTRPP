@@ -56,17 +56,16 @@ scheduler = AsyncIOScheduler(timezone=pytz.utc)
 class WeatherStates(StatesGroup):
     waiting_for_city_current = State()
     waiting_for_city_forecast = State()
-
-    # Для новой подписки
     waiting_for_city_subscribe = State()
+    choosing_timezone_text_input = State()  # Было choosing_timezone
+    entering_notification_time_text_input = State()  # Было entering_notification_time
 
-    # Для управления существующими подписками
-    managing_subscription_city_choice = State()  # Ожидание выбора города (текстом) для управления
-    managing_specific_city_action_choice = State()  # Ожидание выбора действия для города (текстом)
+    # Состояние для текстовой отписки (которое мы добавили)
+    waiting_for_city_unsubscribe = State()  # <--- УБЕДИСЬ, ЧТО ЭТА СТРОКА ЕСТЬ!
 
-    # Для настройки времени и таймзоны (остаются)
-    choosing_timezone_text_input = State()  # Ожидание выбора таймзоны (текстом)
-    entering_notification_time_text_input = State()
+    # Состояния для управления подписками через ReplyKeyboard
+    managing_subscription_city_choice = State()
+    managing_specific_city_action_choice = State()
 
 # --- Клавиатуры ---
 def main_menu_keyboard():
