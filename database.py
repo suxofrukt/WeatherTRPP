@@ -87,7 +87,7 @@ async def get_all_active_subscriptions_with_details(pool):
     async with pool.acquire() as conn:
         # Добавляем выборку last_alert_sent_at
         rows = await conn.fetch("""
-            SELECT user_id, city, last_alert_sent_at FROM subscriptions
+            SELECT user_id, city, notification_time, timezone, last_alert_sent_at FROM subscriptions
             WHERE is_active = TRUE;
         """)
         return rows
@@ -100,3 +100,13 @@ async def update_last_alert_time(pool, user_id: int, city: str):
             SET last_alert_sent_at = NOW()
             WHERE user_id = $1 AND city = $2;
         """, user_id, city)
+
+async def update_last_daily_sent_time(pool, user_id: int, city: str, dt: datetime.datetime):
+    query = """
+        UPDATE subscriptions
+        SET last_daily_sent_at = $3
+        WHERE user_id = $1 AND city = $2;
+    """
+    async with pool.acquire() as conn:
+        await conn.execute(query, user_id, city, dt)
+

@@ -18,7 +18,7 @@ from weather_api import get_weather, get_forecast, check_for_precipitation_in_fo
 from database import (
     get_pool, save_request, get_history,
     add_subscription, remove_subscription, get_user_subscriptions,
-    get_all_active_subscriptions_with_details, update_last_alert_time
+    get_all_active_subscriptions_with_details, update_last_alert_time, update_last_daily_sent_time
     # get_active_subscriptions_for_notification - если старая функция send_weather_notification не используется, это тоже не нужно
 )
 
@@ -626,36 +626,89 @@ async def catch_all_messages_debug(message: Message, state: FSMContext):
 
 # --- ПЛАНИРОВЩИК: ДВЕ ФУНКЦИИ РАССЫЛКИ ---
 # 1. send_daily_morning_forecast_local_time (код из предыдущего ответа, который учитывает timezone и notification_time)
-async def send_daily_morning_forecast_local_time():
+# ------------------------------------------------------------------
+# Отправка утреннего (или любого заданного) прогноза по локальному
+# времени из подписки. Вызывается планировщиком каждую минуту.
+# ------------------------------------------------------------------
+async def send_daily_morning_forecast_local_time() -> None:
     global pool, bot
-    if not pool or not bot: logger.warning("Scheduler (Morning): Pool or Bot not initialized."); return
-    logger.info("Scheduler (Morning): >>> Checking for local 08:00 AM forecasts.")
-    current_utc_dt = datetime.datetime.now(pytz.utc)
+
+    # safety-check
+    if not pool or not bot:
+        logger.warning("Scheduler: pool/bot not initialized")
+        return
+
+    now_utc = datetime.datetime.now(pytz.utc).replace(microsecond=0)
+
+    # --- берём все активные подписки ---
     try:
-        all_subscriptions = await get_all_active_subscriptions_with_details(pool)
-        if not all_subscriptions: return
-        for sub in all_subscriptions:
-            user_id, city, user_notification_time_obj, user_timezone_str, _ = sub['user_id'], sub['city'], sub[
-                'notification_time'], sub['timezone'], sub.get('last_alert_sent_at')  # _ для last_alert_sent_at
-            if not user_notification_time_obj or not user_timezone_str: continue
-            try:
-                user_tz = pytz.timezone(user_timezone_str)
-            except pytz.UnknownTimeZoneError:
-                logger.error(f"Unknown tz {user_timezone_str}"); continue
-            user_local_date_today = current_utc_dt.astimezone(user_tz).date()
-            target_local_datetime_obj = datetime.datetime.combine(user_local_date_today, user_notification_time_obj)
-            target_local_datetime_aware = user_tz.localize(target_local_datetime_obj, is_dst=None)
-            target_utc_hour = target_local_datetime_aware.astimezone(pytz.utc).hour
-            target_utc_datetime = target_local_datetime_aware.astimezone(pytz.utc)
-            if current_utc_dt.replace(second=0, microsecond=0) == target_utc_datetime.replace(second=0, microsecond=0):
-                logger.info(f"Scheduler (Morning): Time for {city} (user {user_id})")
-                weather_info = await get_weather(city)
-                if "Ошибка:" not in weather_info:
-                    msg = f"☀️ Доброе утро! Погода в г. {city} на {user_notification_time_obj.strftime('%H:%M')} по вашему времени:\n\n{weather_info}"
-                    await bot.send_message(user_id, msg)
-                    logger.info(f"Scheduler (Morning): Sent to {user_id} for {city}")
+        subscriptions = await get_all_active_subscriptions_with_details(pool)
     except Exception as e:
-        logger.error(f"Scheduler (Morning): Error: {e}", exc_info=True)
+        logger.error(f"Scheduler: DB error: {e}", exc_info=True)
+        return
+
+    if not subscriptions:
+        return
+
+    # --- обрабатываем каждую подписку ---
+    for sub in subscriptions:
+        user_id   = sub.get("user_id")
+        city      = sub.get("city")
+        notif_tm  = sub.get("notification_time")      # TIME
+        tz_name   = sub.get("timezone") or "UTC"
+        last_sent = sub.get("last_daily_sent_at")     # TIMESTAMP, может быть None
+
+        # пропускаем неполные записи
+        if not user_id or not city or notif_tm is None:
+            continue
+
+        # защита: если уже слали < 60 сек назад
+        if last_sent and (now_utc - last_sent).total_seconds() < 60:
+            continue
+
+        # --- локальное время пользователя ---
+        try:
+            user_tz = pytz.timezone(tz_name)
+        except pytz.UnknownTimeZoneError:
+            logger.error(f"Scheduler: unknown tz {tz_name} for user {user_id}")
+            continue
+
+        local_today   = now_utc.astimezone(user_tz).date()
+        local_target  = datetime.datetime.combine(local_today, notif_tm)
+        local_target  = user_tz.localize(local_target, is_dst=None)
+        target_utc_dt = local_target.astimezone(pytz.utc).replace(microsecond=0)
+
+        # --- попали в окно ±30 сек? ---
+        if abs((now_utc - target_utc_dt).total_seconds()) > 30:
+            continue
+
+        logger.info(f"Scheduler: sending forecast for {city} (user {user_id})")
+
+        # --- получаем погоду ----
+        weather_txt = await get_weather(city)
+        if "Ошибка:" in weather_txt:
+            logger.warning(f"Scheduler: weather API error for {city}: {weather_txt}")
+            continue
+
+        # --- шлём сообщение ---
+        msg = (
+            f"☀️ Доброе утро!\n\n"
+            f"Погода в {city} на {notif_tm.strftime('%H:%M')} "
+            f"(ваш пояс {tz_name}):\n\n{weather_txt}"
+        )
+        try:
+            await bot.send_message(user_id, msg)
+            logger.info(f"Scheduler: sent to {user_id} for {city}")
+
+            # фиксируем время последней отправки
+            try:
+                await update_last_daily_sent_time(pool, user_id, city, now_utc)
+            except Exception as e:
+                logger.error(f"Scheduler: can't update last_daily_sent_time: {e}", exc_info=True)
+
+        except Exception as e:
+            logger.error(f"Scheduler: telegram send error: {e}", exc_info=True)
+
 
 
 # 2. send_precipitation_alert (код из предыдущего ответа, который использует last_alert_sent_at и check_for_precipitation_in_forecast)
