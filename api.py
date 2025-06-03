@@ -828,14 +828,21 @@ async def on_startup_combined():
     # 3. Настройка и запуск ПЛАНИРОВЩИКА С ДВУМЯ ЗАДАЧАМИ
     # ЗАДАЧА 1: Ежедневные утренние уведомления (проверка каждый час в XX:01 UTC)
     scheduler.add_job(
+        send_daily_morning_forecast_local_time,
+        CronTrigger(minute="*", timezone=pytz.utc),
+        id="daily_morning_check",
+        replace_existing=True
+    )
+    logger.info("Scheduler: Job 'daily_morning_check' set (every minute).")
+
+    # ЗАДАЧА 2: Уведомления об ухудшении погоды (проверка каждый час в XX:05 UTC)
+    scheduler.add_job(
         send_precipitation_alert,
         CronTrigger(minute=0, timezone=pytz.utc),
         id="precipitation_check",
         replace_existing=True
     )
     logger.info("Scheduler: Job 'every_minute_check_for_local_morning' set (every minute).")
-
-    # ЗАДАЧА 2: Уведомления об ухудшении погоды (проверка каждый час в XX:05 UTC)
     # scheduler.add_job(
     #     send_precipitation_alert,
     #     CronTrigger(minute="*/15", timezone=pytz.utc),  # ← каждые 15 мин
