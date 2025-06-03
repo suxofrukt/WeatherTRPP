@@ -718,56 +718,49 @@ async def send_daily_morning_forecast_local_time() -> None:
 # ------------------------------------------------------------------
 async def send_precipitation_alert() -> None:
     global pool, bot
-
     if not pool or not bot:
         logger.warning("Scheduler(Prec): pool/bot not initialized")
         return
 
+    # настройки
+    COOLDOWN  = 1800        # 30 мин
+    MIN_LEAD  = 0           # реагируем, даже если дождь уже начинается
+    MAX_LEAD  = 60          # и до 1 ч вперёд
+
     now_utc = datetime.datetime.now(pytz.utc)
 
-    # 1. Берём все активные подписки одной пачкой
     try:
         subs = await get_all_active_subscriptions_with_details(pool)
     except Exception as e:
         logger.error(f"Prec-alert: DB error: {e}", exc_info=True)
         return
 
-    if not subs:
-        return
-
-    # 2. Проходим по каждой подписке
     for sub in subs:
-        user_id = sub.get("user_id")
-        city    = sub.get("city")
-        # отдельная колонка для этих алертов — чтобы не конфликтовать
-        last_sent = sub.get("last_precip_alert_at")
+        user_id = sub["user_id"]
+        city    = sub["city"]
+        last_ts = sub.get("last_alert_sent_at")   # ← берём ЛЕВУЮ колонку
 
-        if not user_id or not city:
-            continue  # неполная запись
-
-        # НЕ спамим: минимум 1 ч между алертами
-        if last_sent and (now_utc - last_sent).total_seconds() < 3600:
+        # анти-спам: ждём минимум 30 мин с прошлого алерта
+        if last_ts and (now_utc - last_ts).total_seconds() < COOLDOWN:
             continue
 
-        # 3. Запрашиваем прогноз
+        # проверяем прогноз
         try:
-            alert_text = await check_for_precipitation_in_forecast(
+            alert = await check_for_precipitation_in_forecast(
                 city,
-                min_lead_minutes=0,
-                max_lead_minutes=120
+                min_lead_minutes=MIN_LEAD,
+                max_lead_minutes=MAX_LEAD
             )
         except Exception as e:
             logger.error(f"Prec-alert: checker failed for {city}: {e}", exc_info=True)
             continue
 
-        if not alert_text:
-            logger.info(f"Prec-alert: no precipitation soon in {city}")
-            continue
+        if not alert:
+            continue     # осадков нет — едем дальше
 
-        # 4. Шлём пользователю предупреждение
+        # отправляем сообщение
         msg = (
-            f"🌧 Внимание!\n\n"
-            f"Через {alert_text} в {city} ожидаются осадки.\n"
+            f"🌧 Внимание!\n\n{alert}\n"
             "Возьмите зонт или запланируйте маршрут под крышами ☔️"
         )
         try:
@@ -777,18 +770,13 @@ async def send_precipitation_alert() -> None:
             logger.error(f"Prec-alert: telegram send error: {e}", exc_info=True)
             continue
 
-        # 5. Обновляем отметку «когда последний раз слали»
+        # фиксируем время последнего осадочного алерта
         try:
-            # расширяем функцию: передаём имя поля, которое надо обновить
-            await update_last_alert_time(
-                pool,
-                user_id,
-                city,
-                field_name="last_precip_alert_at",
-                timestamp=now_utc
-            )
+            await update_last_alert_time(pool, user_id, city)   # поле по умолчанию — last_alert_sent_at
         except Exception as e:
-            logger.error(f"Prec-alert: can't update last_precip_alert_at: {e}", exc_info=True)
+            logger.error(f"Prec-alert: can't update last_alert_sent_at: {e}", exc_info=True)
+
+
 
 
 
@@ -839,9 +827,12 @@ async def on_startup_combined():
 
     # 3. Настройка и запуск ПЛАНИРОВЩИКА С ДВУМЯ ЗАДАЧАМИ
     # ЗАДАЧА 1: Ежедневные утренние уведомления (проверка каждый час в XX:01 UTC)
-    scheduler.add_job(send_daily_morning_forecast_local_time, CronTrigger(minute='*', timezone=pytz.utc),
-                      # minute='*' - каждую минуту
-                      id="every_minute_check_for_local_morning", replace_existing=True)
+    scheduler.add_job(
+        send_precipitation_alert,
+        CronTrigger(minute=0, timezone=pytz.utc),
+        id="precipitation_check",
+        replace_existing=True
+    )
     logger.info("Scheduler: Job 'every_minute_check_for_local_morning' set (every minute).")
 
     # ЗАДАЧА 2: Уведомления об ухудшении погоды (проверка каждый час в XX:05 UTC)
