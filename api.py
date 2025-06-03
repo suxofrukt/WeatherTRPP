@@ -627,7 +627,6 @@ async def catch_all_messages_debug(message: Message, state: FSMContext):
 # --- ПЛАНИРОВЩИК: ДВЕ ФУНКЦИИ РАССЫЛКИ ---
 # 1. send_daily_morning_forecast_local_time (код из предыдущего ответа, который учитывает timezone и notification_time)
 async def send_daily_morning_forecast_local_time():
-    # ... (ТОЧНО ТАКОЙ ЖЕ КОД, КАК В ПРЕДЫДУЩЕМ ОТВЕТЕ ДЛЯ ЭТОЙ ФУНКЦИИ)
     global pool, bot
     if not pool or not bot: logger.warning("Scheduler (Morning): Pool or Bot not initialized."); return
     logger.info("Scheduler (Morning): >>> Checking for local 08:00 AM forecasts.")
@@ -647,9 +646,8 @@ async def send_daily_morning_forecast_local_time():
             target_local_datetime_obj = datetime.datetime.combine(user_local_date_today, user_notification_time_obj)
             target_local_datetime_aware = user_tz.localize(target_local_datetime_obj, is_dst=None)
             target_utc_hour = target_local_datetime_aware.astimezone(pytz.utc).hour
-            if (current_utc_dt.hour == target_utc_hour and
-                    user_notification_time_obj.minute == 0 and  # Точно в ХХ:00
-                    current_utc_dt.minute < 5):
+            target_utc_datetime = target_local_datetime_aware.astimezone(pytz.utc)
+            if current_utc_dt.replace(second=0, microsecond=0) == target_utc_datetime.replace(second=0, microsecond=0):
                 logger.info(f"Scheduler (Morning): Time for {city} (user {user_id})")
                 weather_info = await get_weather(city)
                 if "Ошибка:" not in weather_info:
@@ -733,9 +731,10 @@ async def on_startup_combined():
 
     # 3. Настройка и запуск ПЛАНИРОВЩИКА С ДВУМЯ ЗАДАЧАМИ
     # ЗАДАЧА 1: Ежедневные утренние уведомления (проверка каждый час в XX:01 UTC)
-    scheduler.add_job(send_daily_morning_forecast_local_time, CronTrigger(minute=1, timezone=pytz.utc),
-                      id="hourly_check_for_local_morning", replace_existing=True)
-    logger.info("Scheduler: Job 'hourly_check_for_local_morning' set (every hour at XX:01 UTC).")
+    scheduler.add_job(send_daily_morning_forecast_local_time, CronTrigger(minute='*', timezone=pytz.utc),
+                      # minute='*' - каждую минуту
+                      id="every_minute_check_for_local_morning", replace_existing=True)
+    logger.info("Scheduler: Job 'every_minute_check_for_local_morning' set (every minute).")
 
     # ЗАДАЧА 2: Уведомления об ухудшении погоды (проверка каждый час в XX:05 UTC)
     scheduler.add_job(send_precipitation_alert, CronTrigger(minute=5, timezone=pytz.utc),
