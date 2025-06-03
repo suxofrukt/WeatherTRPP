@@ -60,6 +60,10 @@ class WeatherStates(StatesGroup):
     choosing_timezone = State()  # Ожидание выбора часового пояса для утренних уведомлений
     entering_notification_time = State()  # Ожидание ввода времени для утренних уведомлений
     waiting_for_city_unsubscribe = State()  # Ожидание города для отписки
+    managing_subscription_city_choice = State()  # Ожидание выбора города из списка Reply-кнопок
+    managing_specific_city_action_choice = State() # Ожидание выбора действия (настроить/отписаться) для конкретного города
+    choosing_timezone = State()
+    entering_notification_time = State()
 
 
 # --- Клавиатуры ---
@@ -108,6 +112,23 @@ def initial_config_keyboard(city: str):  # Клавиатура после ус�
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+def subscribed_cities_keyboard(subscriptions: list, add_new_city_button: bool = True, back_to_main_button: bool = True):
+    buttons = []
+    for sub in subscriptions:
+        buttons.append([KeyboardButton(text=sub['city'])]) # Кнопка для каждого города
+    if add_new_city_button:
+        buttons.append([KeyboardButton(text="➕ Подписаться на новый город")])
+    if back_to_main_button:
+        buttons.append([KeyboardButton(text="◀️ Назад в главное меню")])
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False) # one_time=False, чтобы не скрывалась
+
+def city_management_actions_keyboard(city_name: str):
+    kb = [
+        [KeyboardButton(text=f"⚙️ Настроить время/пояс для {city_name}")],
+        [KeyboardButton(text=f"➖ Отписаться от {city_name}")],
+        [KeyboardButton(text="◀️ Назад к списку городов")] # Кнопка для возврата
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
 
 def subscriptions_list_actions_keyboard(subscriptions: list):  # Клавиатура для списка подписок
     buttons = []
@@ -214,19 +235,26 @@ async def process_forecast_city(message: Message, state: FSMContext):
 # --- Управление подписками ---
 @router.message(F.text == "🔔 Мои подписки")
 async def manage_subscriptions_menu_entry(message: Message, state: FSMContext):
-    await state.clear()  # Сбрасываем любое предыдущее состояние FSM
+    await state.clear()
     global pool
     if not pool: pool = await get_pool()
     user_id = message.from_user.id
 
     try:
-        subscriptions = await get_user_subscriptions(pool, user_id)
+        subscriptions = await get_user_subscriptions(pool,
+                                                     user_id)  # Должна возвращать список словарей [{'city': 'Москва', ...}]
         if subscriptions:
-            await message.answer("Ваши подписки и настройки уведомлений:",
-                                 reply_markup=subscriptions_list_actions_keyboard(subscriptions))
+            await state.set_state(WeatherStates.managing_subscription_city_choice)
+            # Сохраняем список городов в FSM, чтобы потом проверить, что пользователь нажал на существующий город
+            subscribed_city_names = [sub['city'] for sub in subscriptions]
+            await state.update_data(subscribed_cities=subscribed_city_names)
+
+            await message.answer("Выберите город для управления подпиской:",
+                                 reply_markup=subscribed_cities_keyboard(subscriptions))
         else:
+            # Если подписок нет, предлагаем стандартное меню подписки (с Reply кнопками)
             await message.answer("У вас пока нет подписок.\nХотите добавить?",
-                                 reply_markup=subscriptions_menu_keyboard())  # Клавиатура с "Подписаться на город"
+                                 reply_markup=subscriptions_menu_keyboard())
     except Exception as e:
         logger.error(f"Error fetching subscriptions for user {user_id}: {e}", exc_info=True)
         await message.answer("Не удалось загрузить ваши подписки. Попробуйте позже.", reply_markup=main_menu_keyboard())
@@ -256,6 +284,75 @@ async def ask_city_to_subscribe(message: Message, state: FSMContext):
                          "- Предупреждения об осадках.",
                          reply_markup=back_keyboard())
 
+@router.message(WeatherStates.managing_subscription_city_choice, F.text)
+async def process_chosen_city_for_management(message: Message, state: FSMContext):
+    chosen_city = message.text.strip()
+    user_data = await state.get_data()
+    subscribed_cities = user_data.get("subscribed_cities", [])
+
+    if chosen_city == "➕ Подписаться на новый город":
+        await state.set_state(WeatherStates.waiting_for_city_subscribe) # Переходим к стандартному FSM новой подписки
+        await message.answer("Введите название города для новой подписки:", reply_markup=back_keyboard())
+        return
+    elif chosen_city == "◀️ Назад в главное меню":
+        await state.clear()
+        await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_keyboard())
+        return
+    elif chosen_city in subscribed_cities:
+        await state.update_data(city_to_manage=chosen_city) # Сохраняем город, который будем настраивать/удалять
+        await state.set_state(WeatherStates.managing_specific_city_action_choice)
+        await message.answer(f"Управление подпиской на г. {chosen_city}.\nВыберите действие:",
+                             reply_markup=city_management_actions_keyboard(chosen_city))
+    else:
+        await message.reply("Пожалуйста, выберите город из предложенных на клавиатуре, "
+                            "нажмите 'Подписаться на новый город' или 'Назад в главное меню'.")
+
+@router.message(WeatherStates.managing_specific_city_action_choice, F.text)
+async def process_city_management_action(message: Message, state: FSMContext):
+    action_text = message.text.strip()
+    user_data = await state.get_data()
+    city_to_manage = user_data.get("city_to_manage")
+
+    if not city_to_manage:
+        await state.clear()
+        await message.answer("Произошла ошибка, город не выбран. Пожалуйста, начните снова из меню 'Мои подписки'.", reply_markup=main_menu_keyboard())
+        return
+
+    if action_text == f"⚙️ Настроить время/пояс для {city_to_manage}":
+        await state.update_data(configuring_city=city_to_manage) # Сохраняем для FSM настройки времени/пояса
+        await state.set_state(WeatherStates.choosing_timezone)
+        await message.answer(f"Настройка утренних уведомлений для г. {city_to_manage}.\n"
+                             "Шаг 1: Выберите часовой пояс.",
+                             reply_markup=timezone_choice_keyboard()) # Здесь используем Inline для выбора таймзоны
+    elif action_text == f"➖ Отписаться от {city_to_manage}":
+        global pool
+        if not pool: pool = await get_pool()
+        user_id = message.from_user.id
+        try:
+            await remove_subscription(pool, user_id, city_to_manage)
+            await state.clear()
+            await message.answer(f"🗑 Вы отписались от уведомлений для г. {city_to_manage}.",
+                                 reply_markup=main_menu_keyboard())
+        except Exception as e:
+            logger.error(f"Ошибка при отписке от {city_to_manage} для user {user_id}: {e}", exc_info=True)
+            await state.clear() # Очищаем состояние и в случае ошибки
+            await message.answer("Произошла ошибка при отписке.", reply_markup=main_menu_keyboard())
+    elif action_text == "◀️ Назад к списку городов":
+        # Нужно снова показать список городов, т.е. вернуться к логике manage_subscriptions_menu_entry
+        # Это можно сделать, вызвав ее часть или просто перейдя в состояние и отправив сообщение
+        subscriptions = await get_user_subscriptions(pool, message.from_user.id)
+        if subscriptions:
+            await state.set_state(WeatherStates.managing_subscription_city_choice)
+            subscribed_city_names = [sub['city'] for sub in subscriptions]
+            await state.update_data(subscribed_cities=subscribed_city_names)
+            await message.answer("Выберите город для управления подпиской:",
+                                 reply_markup=subscribed_cities_keyboard(subscriptions))
+        else: # Если вдруг все подписки удалились
+            await state.clear()
+            await message.answer("У вас больше нет подписок.", reply_markup=main_menu_keyboard())
+    else:
+        await message.reply("Пожалуйста, выберите действие с помощью кнопок.",
+                            reply_markup=city_management_actions_keyboard(city_to_manage))
 
 # Шаг 1 подписки: ввод города
 @router.message(WeatherStates.waiting_for_city_subscribe, F.text)
@@ -401,7 +498,8 @@ async def process_notification_time_input(message: Message, state: FSMContext):
 # --- Отписка (через Inline кнопку из списка подписок) ---
 @router.callback_query(F.data.startswith("unsub_"))
 async def cb_process_unsubscribe_city(callback_query: types.CallbackQuery,
-                                      state: FSMContext):  # Состояние здесь не нужно
+                                      state: FSMContext):
+    logger.info(f">>> CB: cb_process_unsubscribe_city called with data: {callback_query.data}")
     await callback_query.answer()
     city_to_unsubscribe = callback_query.data.split("_", 1)[1]
 
