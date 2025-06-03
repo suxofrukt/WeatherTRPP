@@ -426,8 +426,49 @@ async def cb_process_unsubscribe_city(callback_query: types.CallbackQuery,
 # @router.message(WeatherStates.waiting_for_city_unsubscribe, F.text) ...
 
 
-# --- История запросов (остается без изменений) ---
-# ... (show_history, history_via_button, history_command_handler) ...
+async def show_history(message: Message):  # Убери state: FSMContext, если он не используется
+    global pool
+    if not pool: pool = await get_pool()
+    logger.info(f"User {message.from_user.id} requested history (via show_history function).")
+
+    username = message.from_user.username
+    if not username:
+        await message.answer("У вас не установлен username в Telegram. История не может быть показана.",
+                             reply_markup=main_menu_keyboard())
+        return
+
+    try:
+        rows = await get_history(pool, username)  # Функция из database.py
+        if not rows:
+            await message.answer("История запросов пуста.", reply_markup=main_menu_keyboard())
+            return
+
+        history_text_parts = [f"📍 {idx + 1}. {row['city']} — {row['request_time'].strftime('%Y-%m-%d %H:%M')}"
+                              for idx, row in enumerate(rows)]
+        history_text = "\n".join(history_text_parts)
+
+        # Ограничение длины сообщения
+        if len(history_text) + len("🕘 Ваша история запросов (последние 10):\n") > 4096:  # Стандартный лимит Telegram
+            history_text = "Слишком много записей для отображения. Вот часть из них:\n" + history_text[
+                                                                                          :3900] + "\n(...)"  # Оставляем запас
+
+        await message.answer(f"🕘 Ваша история запросов (последние 10):\n{history_text}",
+                             reply_markup=main_menu_keyboard())
+    except Exception as e:
+        logger.error(f"Error fetching/showing history for username {username}: {e}", exc_info=True)
+        await message.answer("Ошибка при получении истории.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "📜 Моя история")
+async def history_via_button(message: Message):  # Убрал state: FSMContext
+    logger.info(f">>> HISTORY VIA BUTTON HANDLER TRIGGERED for user {message.from_user.id}")
+    await show_history(message)
+
+
+@router.message(Command("history"))  # Если хочешь оставить и команду /history
+async def history_command_handler(message: Message):  # Убрал state: FSMContext
+    logger.info(f">>> HISTORY COMMAND HANDLER TRIGGERED for user {message.from_user.id}")
+    await show_history(message)
 
 # --- ПЛАНИРОВЩИК: ДВЕ ФУНКЦИИ РАССЫЛКИ ---
 # 1. send_daily_morning_forecast_local_time (код из предыдущего ответа, который учитывает timezone и notification_time)
