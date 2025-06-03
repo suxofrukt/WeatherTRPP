@@ -147,9 +147,69 @@ async def back_to_main_menu(message: Message, state: FSMContext):
     await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_keyboard())
 
 
-# --- Погода сейчас / Прогноз на 3 дня (остаются без изменений) ---
-# ... (ask_city_for_current_weather, process_current_weather_city) ...
-# ... (ask_city_for_forecast, process_forecast_city) ...
+@router.message(F.text == "🌦 Погода сейчас")
+async def ask_city_for_current_weather(message: Message, state: FSMContext):
+    await state.set_state(WeatherStates.waiting_for_city_current)
+    await message.answer("Введите название города:", reply_markup=back_keyboard())
+
+
+@router.message(WeatherStates.waiting_for_city_current, F.text)
+async def process_current_weather_city(message: Message, state: FSMContext):
+    city = message.text.strip()
+    if city == "◀️ Назад в меню":
+        await state.clear()
+        await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_keyboard())
+        return
+    if not city or "/" in city:
+        await message.answer("Некорректное название города. Пожалуйста, введите снова.", reply_markup=back_keyboard())
+        return
+
+    await state.clear()
+    global pool
+    if not pool: pool = await get_pool()
+
+    weather_info = await get_weather(city)
+    await message.answer(weather_info, reply_markup=main_menu_keyboard())
+
+    # Сохранение в историю (опционально, как у тебя было)
+    if message.from_user and message.from_user.username and "Ошибка:" not in weather_info:
+        try:
+            await save_request(pool, message.from_user.username, city, datetime.datetime.now())
+        except Exception as e:
+            logger.error(f"Error saving current weather request for {city}: {e}")
+
+
+# --- Прогноз на 3 дня ---
+@router.message(F.text == "🗓 Прогноз на 3 дня")
+async def ask_city_for_forecast(message: Message, state: FSMContext):
+    await state.set_state(WeatherStates.waiting_for_city_forecast)
+    await message.answer("Введите название города для прогноза:", reply_markup=back_keyboard())
+
+
+@router.message(WeatherStates.waiting_for_city_forecast, F.text)
+async def process_forecast_city(message: Message, state: FSMContext):
+    city = message.text.strip()
+    if city == "◀️ Назад в меню":
+        await state.clear()
+        await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_keyboard())
+        return
+    if not city or "/" in city:
+        await message.answer("Некорректное название города. Пожалуйста, введите снова.", reply_markup=back_keyboard())
+        return
+
+    await state.clear()
+    global pool
+    if not pool: pool = await get_pool()
+
+    forecast_info = await get_forecast(city)
+    await message.answer(forecast_info, reply_markup=main_menu_keyboard())
+
+    # Сохранение в историю (опционально)
+    if message.from_user and message.from_user.username and "Ошибка:" not in forecast_info:
+        try:
+            await save_request(pool, message.from_user.username, city, datetime.datetime.now())
+        except Exception as e:
+            logger.error(f"Error saving forecast request for {city}: {e}")
 
 # --- Управление подписками ---
 @router.message(F.text == "🔔 Мои подписки")
