@@ -1,6 +1,9 @@
 import requests
 import os
 from dotenv import load_dotenv
+import datetime
+import pytz
+
 
 load_dotenv()
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
@@ -77,35 +80,59 @@ PRECIPITATION_CODES = {
 }
 
 
-async def check_for_precipitation_in_forecast(city: str, hours_ahead: int = 6):
-    #Проверяет прогноз на наличие осадков (дождь/снег) в ближайшие `hours_ahead` часов.
-    # Используем 3-часовой прогноз
+async def check_for_precipitation_in_forecast(city: str,
+                                              min_lead_minutes: int = 30,
+                                              max_lead_minutes: int = 120):
     url = f"https://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-
-    # Делаем синхронный запрос. Для улучшения можно перейти на aiohttp.
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Вызовет ошибку для 4xx/5xx ответов
+        response.raise_for_status()
         data = response.json()
     except requests.RequestException as e:
-        # Логируем ошибку и возвращаем None, т.к. не можем получить прогноз
-        print(
-            f"Error fetching forecast for {city}: {e}")  # Замени на logger.error, если weather_api имеет доступ к логгеру
+        print(f"ERROR (check_for_precipitation_in_forecast): Ошибка получения прогноза для {city}: {e}")
         return None
 
     if str(data.get("cod")) != "200":
+        # logger.warning(f"API error for {city}: {data.get('message')}")
+        print(f"DEBUG (check_for_precipitation_in_forecast): API error for {city}: {data.get('message')}")
         return None
 
-    # Рассчитываем, сколько 3-часовых интервалов нужно проверить
-    intervals_to_check = (hours_ahead + 2) // 3  # Округляем вверх
+    city_timezone_offset_seconds = data.get("city", {}).get("timezone")
+    current_utc_time = datetime.datetime.now(pytz.utc)
+
+    intervals_to_check = ((max_lead_minutes // 60) + 2) // 3 + 1
+    if intervals_to_check < 2:  # Минимум 2 интервала (6 часов прогноза), чтобы было из чего выбирать
+        intervals_to_check = 2
+
+    first_relevant_precipitation = None  # Будем хранить здесь первое подходящее предупреждение
 
     for forecast_item in data.get("list", [])[:intervals_to_check]:
         weather_id = forecast_item.get("weather", [{}])[0].get("id")
         if weather_id in PRECIPITATION_CODES:
-            # Нашли осадки! Возвращаем описание погоды.
             description = forecast_item.get("weather", [{}])[0].get("description", "осадки")
-            dt_txt = forecast_item.get("dt_txt", "")
-            return f"Ожидаются осадки ({description}) примерно в {dt_txt.split(' ')[1][:5]}."
+            dt_txt_utc_str = forecast_item.get("dt_txt", "")
 
-    # Если в цикле не нашли осадков, возвращаем None
-    return None
+            try:
+                forecast_utc_time = pytz.utc.localize(datetime.datetime.strptime(dt_txt_utc_str, "%Y-%m-%d %H:%M:%S"))
+
+                time_difference_minutes = (forecast_utc_time - current_utc_time).total_seconds() / 60.0
+
+                # Условие: осадки в будущем, не ранее min_lead_minutes и не позднее max_lead_minutes
+                if min_lead_minutes <= time_difference_minutes <= max_lead_minutes:
+                    local_time_str = forecast_utc_time.strftime('%H:%M')  # По умолчанию UTC
+                    if city_timezone_offset_seconds is not None:
+                        city_tz = datetime.timezone(datetime.timedelta(seconds=city_timezone_offset_seconds))
+                        local_time = forecast_utc_time.astimezone(city_tz)
+                        local_time_str = local_time.strftime('%H:%M')
+
+                    # Сохраняем это как кандидата и выходим из цикла, так как мы ищем *первое* подходящее
+                    first_relevant_precipitation = f"Ожидаются осадки ({description}) примерно в {local_time_str} по местному времени (через ~{int(time_difference_minutes // 60)} ч {int(time_difference_minutes % 60)} мин)."
+                    break  # Нашли первое подходящее, дальше не ищем
+                # else:
+                # print(f"DEBUG: Precipitation for {city} at {forecast_utc_time} is outside desired window ({min_lead_minutes}-{max_lead_minutes} min). Diff: {time_difference_minutes:.0f} min")
+            except ValueError:
+                print(
+                    f"WARNING (check_for_precipitation_in_forecast): Could not parse forecast time {dt_txt_utc_str} for {city}")
+                continue
+
+    return first_relevant_precipitation
