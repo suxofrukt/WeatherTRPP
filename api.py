@@ -69,12 +69,33 @@ class WeatherStates(StatesGroup):
 
 # --- Клавиатуры ---
 def main_menu_keyboard():
-    kb = [
-        [KeyboardButton(text="🌦 Погода сейчас"), KeyboardButton(text="🗓 Прогноз на 3 дня")],
-        [KeyboardButton(text="🔔 Мои подписки"), KeyboardButton(text="📜 Моя история")]
-    ]
+    kb = [[KeyboardButton(text="🌦 Погода сейчас"), KeyboardButton(text="🗓 Прогноз на 3 дня")],
+          [KeyboardButton(text="🔔 Мои подписки"), KeyboardButton(text="📜 Моя история")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
 
+def subscriptions_initial_menu_keyboard(): # Когда подписок нет, или для первого входа
+    kb = [[KeyboardButton(text="➕ Подписаться на город")],
+          [KeyboardButton(text="◀️ Назад в главное меню")]]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
+
+def back_to_main_menu_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="◀️ Назад в главное меню")]], resize_keyboard=True, one_time_keyboard=True)
+
+def subscribed_cities_reply_keyboard(subscriptions: list):
+    buttons = [[KeyboardButton(text=sub['city'])] for sub in subscriptions]
+    buttons.append([KeyboardButton(text="➕ Добавить новый город")]) # Изменил текст для ясности
+    buttons.append([KeyboardButton(text="◀️ Назад в главное меню")])
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False)
+
+def city_management_actions_reply_keyboard(): #city_name здесь не нужен, т.к. он будет в FSM
+    kb = [[KeyboardButton(text="⚙️ Настроить время/пояс")],
+          [KeyboardButton(text="➖ Отписаться от этого города")],
+          [KeyboardButton(text="◀️ Назад к списку городов")]]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
+
+def back_keyboard():  # Для отмены ввода города
+    kb = [[KeyboardButton(text="◀️ Назад в меню")]]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
 
 def subscriptions_menu_keyboard():  # Используется, если у пользователя нет подписок, или после отписки
     kb = [
@@ -83,36 +104,7 @@ def subscriptions_menu_keyboard():  # Используется, если у по
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
 
-def back_to_main_menu_keyboard(): # Просто кнопка назад
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="◀️ Назад в главное меню")]], resize_keyboard=True, one_time_keyboard=True)
-
-def back_to_subs_list_keyboard(): # Для возврата к списку городов
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="◀️ Назад к списку городов")]], resize_keyboard=True, one_time_keyboard=True)
-
-def subscribed_cities_reply_keyboard(subscriptions: list):
-    buttons = []
-    for sub in subscriptions:
-        buttons.append([KeyboardButton(text=sub['city'])])
-    buttons.append([KeyboardButton(text="➕ Подписаться на новый город")])
-    buttons.append([KeyboardButton(text="◀️ Назад в главное меню")])
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False) # False - чтобы оставалась
-
-# Клавиатура с действиями для выбранного города
-def city_management_actions_reply_keyboard(city_name: str): # city_name не нужен для текстов кнопок, если они общие
-    kb = [
-        [KeyboardButton(text="⚙️ Настроить время/пояс")],
-        [KeyboardButton(text="➖ Отписаться от этого города")],
-        [KeyboardButton(text="◀️ Назад к списку городов")]
-    ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
-
-def back_keyboard():  # Для отмены ввода города
-    kb = [[KeyboardButton(text="◀️ Назад в меню")]]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
-
-
-# Словарь популярных таймзон для Inline-кнопок
-POPULAR_TIMEZONES_TEXT_REPLY = { # Тексты кнопок будут ключами для проверки
+POPULAR_TIMEZONES_TEXT_REPLY = {
     "Москва (UTC+3)": "Europe/Moscow", "Лондон (GMT/BST)": "Europe/London",
     "Екатеринбург (UTC+5)": "Asia/Yekaterinburg", "Нью-Йорк (EST/EDT)": "America/New_York",
     "Новосибирск (UTC+7)": "Asia/Novosibirsk", "Лос-Анджелес (PST/PDT)": "America/Los_Angeles",
@@ -120,89 +112,20 @@ POPULAR_TIMEZONES_TEXT_REPLY = { # Тексты кнопок будут ключ
     "Токио (UTC+9)": "Asia/Tokyo", "UTC": "UTC",
 }
 
-
 def timezone_choice_reply_keyboard():
-    buttons = []
-    row = []
-    for display_name in POPULAR_TIMEZONES_TEXT_REPLY.keys():
-        row.append(KeyboardButton(text=display_name))
-        if len(row) >= 2: # По 2 в ряд
-            buttons.append(row)
-            row = []
-    if row: buttons.append(row)
-    buttons.append([KeyboardButton(text="◀️ Отмена настройки")]) # Кнопка для отмены
+    buttons = [[KeyboardButton(text=name)] for name in POPULAR_TIMEZONES_TEXT_REPLY.keys()]
+    buttons.append([KeyboardButton(text="◀️ Отмена настройки (в главное меню)")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
-
-def initial_config_reply_keyboard(city: str):
-    kb = [
-        [KeyboardButton(text=f"⚙️ Настроить время и пояс для {city}")],
-        [KeyboardButton(text="👌 Оставить по умолчанию (08:00)")], # Уточнил текст
-        [KeyboardButton(text="◀️ В главное меню")]
-    ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
-
-def initial_config_keyboard(city: str):  # Клавиатура после успешной подписки
-    buttons = [
-        [InlineKeyboardButton(text=f"⚙️ Настроить время и пояс для {city}", callback_data=f"cfgtime_{city}")],
-        [InlineKeyboardButton(text="👌 Оставить по умолчанию (08:00, пояс города)", callback_data=f"cfgdef_{city}")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def subscribed_cities_keyboard(subscriptions: list, add_new_city_button: bool = True, back_to_main_button: bool = True):
-    buttons = []
-    for sub in subscriptions:
-        buttons.append([KeyboardButton(text=sub['city'])]) # Кнопка для каждого города
-    if add_new_city_button:
-        buttons.append([KeyboardButton(text="➕ Подписаться на новый город")])
-    if back_to_main_button:
-        buttons.append([KeyboardButton(text="◀️ Назад в главное меню")])
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False) # one_time=False, чтобы не скрывалась
-
-def city_management_actions_keyboard(city_name: str):
-    kb = [
-        [KeyboardButton(text=f"⚙️ Настроить время/пояс для {city_name}")],
-        [KeyboardButton(text=f"➖ Отписаться от {city_name}")],
-        [KeyboardButton(text="◀️ Назад к списку городов")] # Кнопка для возврата
-    ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
-
-def subscriptions_list_actions_keyboard(subscriptions: list):  # Клавиатура для списка подписок
-    buttons = []
-    for sub in subscriptions:
-        city = sub['city']
-        time_obj = sub.get('notification_time')  # Может быть None
-        tz_str = sub.get('timezone', 'UTC')  # Дефолт UTC, если нет
-        time_str = time_obj.strftime('%H:%M') if time_obj else "08:00"
-
-        display_text = f"🏙️ {city} (утром в {time_str} по поясу {tz_str} + осадки)"
-        buttons.append([InlineKeyboardButton(text=display_text, callback_data="noop")])  # noop - просто информация
-        buttons.append([
-            InlineKeyboardButton(text=f"⚙️ Настр. {city}", callback_data=f"cfgtime_{city}"),
-            InlineKeyboardButton(text=f"➖ Отпис. {city}", callback_data=f"unsub_{city}")
-        ])
-        buttons.append([InlineKeyboardButton(text="-" * 20, callback_data="noop")])  # Разделитель
-
-    buttons.append([InlineKeyboardButton(text="➕ Добавить город", callback_data="cfg_add_new_city")])
-    buttons.append([InlineKeyboardButton(text="◀️ В главное меню", callback_data="cfg_back_main")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
 
 # --- Хендлеры ---
 @router.message(CommandStart())
 async def start_command(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Привет! Я погодный бот. Выбери действие:", reply_markup=main_menu_keyboard())
+    await state.clear(); await message.answer("Привет! Я погодный бот.", reply_markup=main_menu_keyboard())
 
-
-@router.message(F.text == "◀️ Назад в меню")
+@router.message(F.text == "◀️ Назад в главное меню")
 async def back_to_main_menu(message: Message, state: FSMContext):
-    # ... (логика возврата в меню, возможно, нужно будет уточнить для FSM настройки)
-    # Пока оставим простой вариант
-    current_fsm_state = await state.get_state()  # Получаем текущее состояние
-    logger.info(f"Back to menu called from state: {current_fsm_state}")
-    await state.clear()
-    await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_keyboard())
-
+    logger.info(f"Back to main menu from state: {await state.get_state()}")
+    await state.clear(); await message.answer("Вы в главном меню.", reply_markup=main_menu_keyboard())
 
 @router.message(F.text == "🌦 Погода сейчас")
 async def ask_city_for_current_weather(message: Message, state: FSMContext):
@@ -272,24 +195,76 @@ async def process_forecast_city(message: Message, state: FSMContext):
 @router.message(F.text == "🔔 Мои подписки")
 async def manage_subscriptions_menu_entry(message: Message, state: FSMContext):
     await state.clear()
-    global pool
-    if not pool: pool = await get_pool()
+    global pool; pool = pool or await get_pool()
     user_id = message.from_user.id
     try:
         subscriptions = await get_user_subscriptions(pool, user_id)
         if subscriptions:
             await state.set_state(WeatherStates.managing_subscription_city_choice)
-            subscribed_city_names = [sub['city'] for sub in subscriptions]
-            await state.update_data(subscribed_cities=subscribed_city_names,  # Сохраняем список городов
-                                    raw_subscriptions=subscriptions)  # И полные данные о подписках
-            await message.answer("Выберите город для управления или добавьте новый:",
+            city_data = {sub['city']: sub for sub in subscriptions} # Сохраняем полные данные для быстрого доступа
+            await state.update_data(subscribed_cities_data=city_data)
+            await message.answer("Ваши подписки. Выберите город для управления:",
                                  reply_markup=subscribed_cities_reply_keyboard(subscriptions))
         else:
-            await message.answer("У вас пока нет подписок.",
-                                 reply_markup=subscriptions_menu_keyboard())  # Кнопки "Подписаться", "Назад"
+            await message.answer("У вас пока нет подписок.", reply_markup=subscriptions_initial_menu_keyboard())
     except Exception as e:
-        logger.error(f"Error fetching subscriptions for user {user_id}: {e}", exc_info=True)
-        await message.answer("Не удалось загрузить ваши подписки.", reply_markup=main_menu_keyboard())
+        logger.error(f"Error fetching subs for {user_id}: {e}", exc_info=True)
+        await message.answer("Ошибка загрузки подписок.", reply_markup=main_menu_keyboard())
+
+@router.message(WeatherStates.managing_subscription_city_choice, F.text)
+async def process_chosen_city_for_management(message: Message, state: FSMContext):
+    chosen_text = message.text.strip()
+    user_data = await state.get_data()
+    subscribed_cities_data = user_data.get("subscribed_cities_data", {})
+
+    if chosen_text == "➕ Добавить новый город":
+        await state.set_state(WeatherStates.waiting_for_city_subscribe)
+        await message.answer("Введите название города для новой подписки:", reply_markup=back_to_main_menu_keyboard())
+    elif chosen_text == "◀️ Назад в главное меню":
+        await state.clear(); await message.answer("Вы в главном меню.", reply_markup=main_menu_keyboard())
+    elif chosen_text in subscribed_cities_data:
+        await state.update_data(city_being_managed=chosen_text)
+        await state.set_state(WeatherStates.managing_specific_city_action_choice)
+        sub_details = subscribed_cities_data[chosen_text]
+        time_obj = sub_details.get('notification_time')
+        tz_str = sub_details.get('timezone', 'UTC')
+        time_str = time_obj.strftime('%H:%M') if time_obj else "08:00"
+        await message.answer(f"Управление подпиской: {chosen_text}\n(Утро: {time_str} {tz_str}, +Осадки). Действие?",
+                             reply_markup=city_management_actions_reply_keyboard())
+    else:
+        await message.reply("Выберите город кнопками.")
+
+@router.message(WeatherStates.managing_specific_city_action_choice, F.text)
+async def process_city_management_action(message: Message, state: FSMContext):
+    action_text = message.text.strip()
+    user_data = await state.get_data()
+    city_to_manage = user_data.get("city_being_managed")
+    if not city_to_manage: await state.clear(); await message.answer("Ошибка. Начните снова.", reply_markup=main_menu_keyboard()); return
+
+    if action_text == "⚙️ Настроить время/пояс":
+        await state.update_data(configuring_city=city_to_manage) # Для след. шага
+        await state.set_state(WeatherStates.choosing_timezone_text_input)
+        await message.answer(f"Настройка для г. {city_to_manage}.\nШаг 1: Выберите часовой пояс:",
+                             reply_markup=timezone_choice_reply_keyboard())
+    elif action_text == "➖ Отписаться от этого города":
+        # ... (логика отписки, как ты ее написал, с remove_subscription) ...
+        global pool; pool = pool or await get_pool()
+        try:
+            await remove_subscription(pool, message.from_user.id, city_to_manage)
+            await state.clear()
+            await message.answer(f"🗑 Вы отписались от г. {city_to_manage}.", reply_markup=main_menu_keyboard())
+        except Exception as e:
+            logger.error(f"Ошибка отписки от {city_to_manage}: {e}", exc_info=True)
+            await state.clear(); await message.answer("Ошибка при отписке.", reply_markup=main_menu_keyboard())
+    elif action_text == "◀️ Назад к списку городов":
+        # Вернуться к выбору города (вызвать часть manage_subscriptions_menu_entry)
+        subscriptions = await get_user_subscriptions(pool, message.from_user.id)
+        await state.set_state(WeatherStates.managing_subscription_city_choice)
+        city_data = {sub['city']: sub for sub in subscriptions}
+        await state.update_data(subscribed_cities_data=city_data)
+        await message.answer("Выберите город:", reply_markup=subscribed_cities_reply_keyboard(subscriptions))
+    else:
+        await message.reply("Выберите действие кнопками.", reply_markup=city_management_actions_reply_keyboard())
 
 
 # Ожидание выбора города из ReplyKeyboard для управления
@@ -379,13 +354,10 @@ async def process_city_management_action(message: Message, state: FSMContext):
 
 # Хендлер для текстовой кнопки "➕ Подписаться на город" (из subscriptions_menu_keyboard)
 @router.message(F.text == "➕ Подписаться на город")
-async def ask_city_to_subscribe(message: Message, state: FSMContext):  # Переименовал для ясности
+async def text_ask_city_to_subscribe(message: Message, state: FSMContext): # Переименовал для ясности
     await state.set_state(WeatherStates.waiting_for_city_subscribe)
-    await message.answer("Введите название города для подписки:",
-                         reply_markup=back_to_main_menu_keyboard())  # Кнопка "Назад в главное меню"
+    await message.answer("Введите название города для подписки:", reply_markup=back_to_main_menu_keyboard())  # Кнопка "Назад в главное меню"
 
-
-# api.py
 
 @router.message(WeatherStates.waiting_for_city_subscribe, F.text)
 async def process_new_city_for_subscription(message: Message, state: FSMContext):
@@ -430,160 +402,75 @@ async def process_new_city_for_subscription(message: Message, state: FSMContext)
     # --- Конец определения часового пояса ---
 
     try:
-        # Время уведомления всегда 08:00:00 по умолчанию при новой подписке
-        await add_subscription(pool, user_id, city_input,
-                               notification_time_str="08:00:00",
-                               user_timezone_str=user_timezone_str)
-        logger.info(f"Успешно добавлена подписка для user {user_id} на город {city_input} с таймзоной {user_timezone_str}")
-
-        # После успешной подписки предлагаем сразу настроить
-        await state.update_data(
-            configuring_city=city_input,          # Город для настройки
-            current_timezone=user_timezone_str,   # Текущая (дефолтная) таймзона
-            current_notif_time="08:00"            # Текущее (дефолтное) время
-        )
-        await state.set_state(WeatherStates.choosing_timezone_text_input) # Сразу переходим к выбору таймзоны для нового города
-        await message.answer(
-            f"✅ Город {city_input} добавлен в ваши подписки!\n"
-            f"Утренний прогноз по умолчанию будет в 08:00 (таймзона: {user_timezone_str}).\n\n"
-            "Теперь давайте настроим время и часовой пояс для утренних уведомлений.\n"
-            "Шаг 1: Выберите часовой пояс с помощью кнопок ниже.",
-            reply_markup=timezone_choice_reply_keyboard() # Используем ReplyKeyboard для выбора таймзоны
-        )
+        # ... определение user_timezone_str ...
+        await add_subscription(pool, message.from_user.id, city_input, "08:00:00", user_timezone_str)
+        await state.update_data(configuring_city=city_input, current_timezone=user_timezone_str)
+        await state.set_state(WeatherStates.choosing_timezone_text_input)
+        await message.answer(f"✅ Город {city_input} добавлен (утро в 08:00, пояс {user_timezone_str}).\n"
+                             "Настроим время/пояс? Шаг 1: Выберите часовой пояс:",
+                             reply_markup=timezone_choice_reply_keyboard())
     except Exception as e:
-        logger.error(f"Ошибка при добавлении подписки для user {user_id}, город {city_input}: {e}", exc_info=True)
-        await message.answer("Произошла ошибка при добавлении подписки. Попробуйте позже.",
-                             reply_markup=main_menu_keyboard())
-        await state.clear() # Очищаем состояние в случае ошибки
+        logger.error(f"Ошибка добавления подписки на {city_input}: {e}", exc_info=True)
+        await state.clear();
+        await message.answer("Ошибка добавления подписки.", reply_markup=main_menu_keyboard()) # Очищаем состояние в случае ошибки
 
-
-# ... (обработка ошибки) ...
 
 # Шаг 2 настройки: выбор таймзоны (теперь через текст)
 @router.message(WeatherStates.choosing_timezone_text_input, F.text)
 async def process_timezone_choice_text_input(message: Message, state: FSMContext):
     chosen_tz_text = message.text.strip()
     user_data = await state.get_data()
-    city_being_configured = user_data.get("configuring_city")  # Получаем город из состояния
+    city_being_configured = user_data.get("configuring_city")
+    if not city_being_configured: await state.clear(); await message.answer("Ошибка. Начните снова.",reply_markup=main_menu_keyboard()); return
 
-    if not city_being_configured:  # Проверка
-        await state.clear();
-        await message.answer("Ошибка. Начните с 'Мои подписки'.", reply_markup=main_menu_keyboard());
-        return
-
-    if chosen_tz_text == "◀️ Отмена настройки":
+    if chosen_tz_text == "◀️ Отмена настройки (в главное меню)": # Новая кнопка
         await state.clear()
         await message.answer(f"Настройка для г. {city_being_configured} отменена.", reply_markup=main_menu_keyboard())
         return
 
-    selected_timezone_iana = POPULAR_TIMEZONES_TEXT_REPLY.get(chosen_tz_text)  # Ищем IANA по тексту кнопки
-
+    selected_timezone_iana = POPULAR_TIMEZONES_TEXT_REPLY.get(chosen_tz_text)
     if not selected_timezone_iana:
-        await message.reply("Пожалуйста, выберите часовой пояс кнопками.",
-                            reply_markup=timezone_choice_reply_keyboard())
+        await message.reply("Выберите часовой пояс кнопками.", reply_markup=timezone_choice_reply_keyboard())
         return
-
     await state.update_data(selected_timezone=selected_timezone_iana)
     await state.set_state(WeatherStates.entering_notification_time_text_input)
-    await message.answer(f"Для г. {city_being_configured} выбран пояс: {selected_timezone_iana}.\n"
-                         "Шаг 2: Введите желаемое время (ЧЧ:ММ, например, 07:30).",
-                         reply_markup=back_to_main_menu_keyboard())  # Кнопка "Назад в главное меню" для отмены
+    await message.answer(f"Пояс: {selected_timezone_iana}.\nШаг 2: Введите время (ЧЧ:ММ):",
+                         reply_markup=back_to_main_menu_keyboard())
+
 
 # Шаг 3 настройки: ввод времени
 @router.message(WeatherStates.entering_notification_time_text_input, F.text)
 async def process_notification_time_text_input(message: Message, state: FSMContext):
     time_input_str = message.text.strip()
-
-    if time_input_str == "◀️ Назад в главное меню":  # Отмена на этом шаге
-        await state.clear()
-        await message.answer("Настройка отменена.", reply_markup=main_menu_keyboard())
+    if time_input_str == "◀️ Назад в главное меню":
+        await state.clear();
+        await message.answer("Настройка отменена.", reply_markup=main_menu_keyboard());
         return
     try:
         parsed_time = datetime.datetime.strptime(time_input_str, "%H:%M").time()
-        notification_time_for_db = parsed_time.strftime("%H:%M:00")
+        time_for_db = parsed_time.strftime("%H:%M:00")
     except ValueError:
-        await message.reply("Неверный формат времени. Введите ЧЧ:ММ (например, 08:00).")
+        await message.reply("Неверный формат времени (ЧЧ:ММ).", reply_markup=back_to_main_menu_keyboard());
         return
 
     user_data = await state.get_data()
-    city_to_configure = user_data.get("configuring_city")
-    selected_tz = user_data.get("selected_timezone")
+    city, tz = user_data.get("configuring_city"), user_data.get("selected_timezone")
+    if not city or not tz: await state.clear(); await message.answer("Ошибка. Начните снова.",
+                                                                     reply_markup=main_menu_keyboard()); return
 
-    if not city_to_configure or not selected_tz:
-        await message.answer("Ошибка данных настройки. Начните заново из 'Мои подписки'.")
-        await state.clear()
-        return
-
-    global pool
-    if not pool: pool = await get_pool()
-    user_id = message.from_user.id
-
+    global pool;
+    pool = pool or await get_pool()
     try:
-        await add_subscription(pool, user_id, city_to_configure,
-                               notification_time_str=notification_time_for_db,
-                               user_timezone_str=selected_tz)
-        await message.answer(
-            f"👍 Настройки сохранены! Утренний прогноз для г. {city_to_configure} будет в {parsed_time.strftime('%H:%M')} "
-            f"по времени часового пояса {selected_tz}.",
-            reply_markup=main_menu_keyboard()
-        )
+        await add_subscription(pool, message.from_user.id, city, time_for_db, tz)
+        await message.answer(f"👍 Настройки для г. {city} сохранены: {parsed_time.strftime('%H:%M')} ({tz}).",
+                             reply_markup=main_menu_keyboard())
     except Exception as e:
-        logger.error(f"Ошибка сохранения настроек подписки: {e}", exc_info=True)
-        await message.answer("Не удалось сохранить настройки. Попробуйте позже.", reply_markup=main_menu_keyboard())
+        logger.error(f"Ошибка сохр. настроек подписки: {e}", exc_info=True)
+        await message.answer("Не удалось сохранить.", reply_markup=main_menu_keyboard())
     finally:
         await state.clear()
 
 
-# --- Отписка (через Inline кнопку из списка подписок) ---
-@router.callback_query(F.data.startswith("unsub_"))
-async def cb_process_unsubscribe_city(callback_query: types.CallbackQuery,
-                                      state: FSMContext):
-    logger.info(f">>> CB: cb_process_unsubscribe_city called with data: {callback_query.data}")
-    await callback_query.answer()
-    city_to_unsubscribe = callback_query.data.split("_", 1)[1]
-
-    global pool
-    if not pool: pool = await get_pool()
-    user_id = callback_query.from_user.id
-
-    try:
-        await remove_subscription(pool, user_id, city_to_unsubscribe)
-        await callback_query.message.edit_text(
-            f"🗑 Вы отписались от уведомлений для г. {city_to_unsubscribe}."
-        )
-        # Обновить список подписок или предложить вернуться в меню
-        # Простой вариант - отправить сообщение и главную клавиатуру
-        await bot.send_message(user_id, "Список подписок обновлен.", reply_markup=main_menu_keyboard())
-
-    except Exception as e:
-        logger.error(f"Error removing subscription for user {user_id}, city {city_to_unsubscribe} via CB: {e}",
-                     exc_info=True)
-        await callback_query.message.edit_text("Ошибка при отписке. Попробуйте позже.")
-
-
-@router.callback_query(F.data == "cfg_back_main")
-async def cb_back_to_main_menu_from_subs_list(callback_query: types.CallbackQuery, state: FSMContext):
-    logger.info(">>> CB: cb_back_to_main_menu_from_subs_list called")
-    await callback_query.answer()
-    await state.clear()
-    try:
-        await callback_query.message.edit_text("Вы вернулись в главное меню.")
-    except Exception as e:
-        logger.warning(f"Could not edit message for cb_back_to_main_menu_from_subs_list: {e}")
-        # Если редактирование не удалось, новое сообщение все равно будет отправлено ниже
-    # Отправляем ReplyKeyboard главного меню
-    await bot.send_message(callback_query.from_user.id, "Выберите действие:", reply_markup=main_menu_keyboard())
-
-@router.callback_query()
-async def catch_all_callbacks_debug(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer("DEBUG: Callback поймано catch_all") # Чтобы убрать "загрузку"
-    logger.error(f"!!!!!!!! CATCH_ALL_CALLBACK (DEBUG) !!!!!!!")
-    logger.error(f"Data: '{callback_query.data}'") # САМОЕ ВАЖНОЕ
-    logger.error(f"From User ID: {callback_query.from_user.id}")
-    logger.error(f"Message ID: {callback_query.message.message_id if callback_query.message else 'N/A'}")
-    logger.error(f"Full CallbackQuery Object: {callback_query.model_dump_json(indent=2)}")
-    current_fsm_state = await state.get_state()
-    logger.error(f"Current FSM State: {current_fsm_state}")
 
 # Хендлер для текстовой кнопки "➖ Отписаться от города"
 @router.message(F.text == "➖ Отписаться от города", flags={"description": "Начать процесс отписки от города"})
