@@ -80,3 +80,22 @@ async def get_active_subscriptions_for_notification(pool, current_utc_time_str: 
             WHERE is_active = TRUE AND notification_time = $1::TIME;
         """, current_utc_time_str)
         return rows
+
+async def get_all_active_subscriptions_with_details(pool):
+    """Получает все активные подписки с их деталями."""
+    async with pool.acquire() as conn:
+        # Добавляем выборку last_alert_sent_at
+        rows = await conn.fetch("""
+            SELECT user_id, city, last_alert_sent_at FROM subscriptions
+            WHERE is_active = TRUE;
+        """)
+        return rows
+
+async def update_last_alert_time(pool, user_id: int, city: str):
+    """Обновляет время последнего оповещения для подписки."""
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE subscriptions
+            SET last_alert_sent_at = NOW()
+            WHERE user_id = $1 AND city = $2;
+        """, user_id, city)

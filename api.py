@@ -1,5 +1,7 @@
 import os
 import logging
+
+import pytz
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Update, Message, ReplyKeyboardMarkup, KeyboardButton
@@ -10,18 +12,18 @@ from aiogram.fsm.state import State, StatesGroup
 from dotenv import load_dotenv
 from datetime import datetime
 
-# Импорты из твоих модулей
-from weather_api import get_weather, get_forecast
 from database import (
     get_pool, save_request, get_history,
     add_subscription, remove_subscription, get_user_subscriptions,
-    get_active_subscriptions_for_notification
+    get_active_subscriptions_for_notification,
+    get_all_active_subscriptions_with_details, update_last_alert_time
 )
 
 # APScheduler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import utc
+from weather_api import get_weather, get_forecast, check_for_precipitation_in_forecast
 
 # Загрузка .env
 load_dotenv()
@@ -304,6 +306,51 @@ async def history_via_button(message: Message):
 async def history_command_handler(message: Message):
     await show_history(message)
 
+
+async def send_precipitation_alert():
+    global pool, bot
+    if not pool or not bot:
+        logger.warning("Scheduler: Pool or Bot not initialized. Skipping alert round.")
+        return
+
+    logger.info("Scheduler: Checking for precipitation alerts...")
+
+    try:
+        # Получаем все активные подписки
+        subscriptions = await get_all_active_subscriptions_with_details(pool)
+        logger.info(f"Scheduler: Found {len(subscriptions)} active subscriptions to check for alerts.")
+
+        for sub in subscriptions:
+            user_id = sub['user_id']
+            city = sub['city']
+            last_alert_time = sub['last_alert_sent_at']
+
+            # Проверяем, не отправляли ли мы уведомление недавно (например, в последние 3 часа)
+            # чтобы не спамить
+            if last_alert_time and (datetime.datetime.now(pytz.utc) - last_alert_time).total_seconds() < 3 * 3600:
+                logger.info(f"Scheduler: Alert for {city} (user {user_id}) was sent recently. Skipping.")
+                continue
+
+            try:
+                # Проверяем прогноз на наличие осадков в ближайшие 6 часов
+                alert_text = await check_for_precipitation_in_forecast(city, hours_ahead=6)
+
+                if alert_text:
+                    # Если найдены осадки, отправляем уведомление
+                    message_to_send = f"Внимание! В городе {city} ухудшается погода. {alert_text}"
+                    await bot.send_message(user_id, message_to_send)
+                    logger.info(f"Scheduler: Sent precipitation alert for {city} to user {user_id}")
+
+                    # Обновляем время последнего уведомления в БД
+                    await update_last_alert_time(pool, user_id, city)
+
+            except Exception as e:
+                logger.error(f"Scheduler: Failed to process alert for user {user_id} for {city}. Error: {e}",
+                             exc_info=True)
+    except Exception as e:
+        logger.error(f"Scheduler: General error in send_precipitation_alert job: {e}", exc_info=True)
+
+
 # --- Планировщик уведомлений ---
 async def send_weather_notification():
     global pool, bot
@@ -351,6 +398,7 @@ async def telegram_webhook(request: Request):
         logger.exception("Error processing webhook:")
         return {"ok": False, "error": str(e)}
 
+
 @app.on_event("startup")
 async def on_startup_combined():
     global pool, scheduler
@@ -361,11 +409,7 @@ async def on_startup_combined():
         logger.info("API: Startup - creating database pool.")
         pool = await get_pool()
         logger.info("API: Database pool created on startup.")
-    else:
-        logger.info("API: Startup - database pool already exists.")
-
-    # 2. Проверка вебхука (опционально, но полезно)
-    try:
+    try:  # Раскомментируй этот блок
         webhook_info = await bot.get_webhook_info()
         if webhook_info.url:
             logger.info(f"Webhook is set to: {webhook_info.url}")
@@ -373,27 +417,18 @@ async def on_startup_combined():
             logger.warning("Webhook is NOT SET. Consider setting it for production.")
     except Exception as e:
         logger.error(f"Could not get webhook info: {e}")
-
-
     # 3. Настройка и запуск планировщика APScheduler
-    # Запуск каждый день в 08:00 UTC
-    scheduler.add_job(send_weather_notification, CronTrigger(hour=8, minute=0, timezone=utc),
-                      id="daily_weather_8am_utc", replace_existing=True)
-    # Для тестирования можно закомментировать строку выше и раскомментировать следующую:
-    # scheduler.add_job(send_weather_notification, CronTrigger(minute='*', timezone=utc),
-    #                   id="test_every_minute", replace_existing=True)
-    # logger.info("Scheduler: Test job (every minute) has been set.")
-
+    # Запуск проверки КАЖДЫЙ ЧАС (например, в 5 минут каждого часа, чтобы дать API время обновиться)
+    scheduler.add_job(send_precipitation_alert, CronTrigger(minute=5, timezone=utc),
+                      id="hourly_precipitation_check", replace_existing=True)
+    logger.info("Scheduler: Hourly precipitation check job has been set (at 5 min past the hour).")
 
     if not scheduler.running:
-        try:
-            scheduler.start()
-            logger.info("APScheduler started.")
-        except Exception as e:
-            logger.error(f"Failed to start APScheduler: {e}")
-    else:
-        logger.info("APScheduler already running.")
+        scheduler.start()
+        logger.info("APScheduler started.")
+
     logger.info("API: Application startup sequence completed.")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
