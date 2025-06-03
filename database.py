@@ -3,9 +3,11 @@ from dotenv import load_dotenv
 import asyncpg
 import datetime
 import logging
+import pytz
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+ALLOWED_ALERT_FIELDS = {"last_alert_sent_at", "last_precip_alert_at"}
 
 async def get_pool():
     return await asyncpg.create_pool(
@@ -92,14 +94,29 @@ async def get_all_active_subscriptions_with_details(pool):
         """)
         return rows
 
-async def update_last_alert_time(pool, user_id: int, city: str):
-    """Обновляет время последнего оповещения для подписки."""
+async def update_last_alert_time(
+    pool,
+    user_id: int,
+    city: str,
+    field_name: str = "last_alert_sent_at",
+    timestamp: datetime.datetime | None = None,
+) -> None:
+    if field_name not in ALLOWED_ALERT_FIELDS:
+        raise ValueError(f"update_last_alert_time: field '{field_name}' is not allowed")
+
+    ts = timestamp or datetime.datetime.now(pytz.utc)
+
     async with pool.acquire() as conn:
-        await conn.execute("""
+        await conn.execute(
+            f"""
             UPDATE subscriptions
-            SET last_alert_sent_at = NOW()
-            WHERE user_id = $1 AND city = $2;
-        """, user_id, city)
+            SET {field_name} = $3
+            WHERE user_id = $1 AND city = $2
+            """,
+            user_id,
+            city,
+            ts,
+        )
 
 async def update_last_daily_sent_time(pool, user_id: int, city: str, dt: datetime.datetime):
     query = """
