@@ -676,6 +676,18 @@ async def history_command_handler(message: Message):  # Убрал state: FSMCon
     logger.info(f">>> HISTORY COMMAND HANDLER TRIGGERED for user {message.from_user.id}")
     await show_history(message)
 
+
+@router.message()
+async def catch_all_messages_debug(message: Message, state: FSMContext):
+    logger.error(f"!!!!!!!! CATCH_ALL_MESSAGE (DEBUG) !!!!!!!")
+    logger.error(f"Text: '{message.text}'") # САМОЕ ВАЖНОЕ
+    logger.error(f"Chat ID: {message.chat.id}")
+    logger.error(f"User ID: {message.from_user.id}")
+    logger.error(f"Content Type: {message.content_type}")
+    logger.error(f"Full Message Object: {message.model_dump_json(indent=2)}")
+    current_fsm_state = await state.get_state()
+    logger.error(f"Current FSM State: {current_fsm_state}")
+
 # --- ПЛАНИРОВЩИК: ДВЕ ФУНКЦИИ РАССЫЛКИ ---
 # 1. send_daily_morning_forecast_local_time (код из предыдущего ответа, который учитывает timezone и notification_time)
 async def send_daily_morning_forecast_local_time():
