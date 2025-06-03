@@ -536,6 +536,17 @@ async def cb_back_to_main_menu_from_subs_list(callback_query: types.CallbackQuer
     # Отправляем ReplyKeyboard главного меню
     await bot.send_message(callback_query.from_user.id, "Выберите действие:", reply_markup=main_menu_keyboard())
 
+@router.callback_query()
+async def catch_all_callbacks_debug(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("DEBUG: Callback поймано catch_all") # Чтобы убрать "загрузку"
+    logger.error(f"!!!!!!!! CATCH_ALL_CALLBACK (DEBUG) !!!!!!!")
+    logger.error(f"Data: '{callback_query.data}'") # САМОЕ ВАЖНОЕ
+    logger.error(f"From User ID: {callback_query.from_user.id}")
+    logger.error(f"Message ID: {callback_query.message.message_id if callback_query.message else 'N/A'}")
+    logger.error(f"Full CallbackQuery Object: {callback_query.model_dump_json(indent=2)}")
+    current_fsm_state = await state.get_state()
+    logger.error(f"Current FSM State: {current_fsm_state}")
+
 # Хендлер для текстовой кнопки "➖ Отписаться от города"
 @router.message(F.text == "➖ Отписаться от города", flags={"description": "Начать процесс отписки от города"})
 async def ask_for_city_to_unsubscribe_text(message: Message, state: FSMContext):
