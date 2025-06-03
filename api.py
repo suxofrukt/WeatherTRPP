@@ -429,7 +429,30 @@ async def send_precipitation_alert():
 
 
 # --- FastAPI эндпоинты и жизненный цикл ---
-# ... (root, webhook) ...
+@app.get("/")
+async def root():
+    logger.info("Root endpoint '/' was called.")
+    return {"status": "alive"}
+
+
+@app.post("/webhook") # <--- ВОТ ОН, КЛЮЧЕВОЙ ОБРАБОТЧИК!
+async def telegram_webhook(request: Request):
+    logger.info(">>> Webhook endpoint CALLED!")
+    try:
+        body = await request.json()
+        # Логируем только часть тела, чтобы не переполнять логи, если оно большое
+        logger.info(f">>> Webhook BODY received (keys): {list(body.keys()) if isinstance(body, dict) else 'Not a dict'}")
+        if logger.level == logging.DEBUG: # Полное тело только в DEBUG режиме
+             logger.debug(f">>> Full Webhook BODY: {body}")
+
+        update = types.Update(**body) # Используем types.Update для корректного маппинга
+        logger.info(">>> Update object CREATED.")
+        await dp.feed_update(bot=bot, update=update) # Передаем именованные аргументы
+        logger.info(">>> dp.feed_update COMPLETED.")
+        return {"ok": True}
+    except Exception as e:
+        logger.exception(">>> EXCEPTION in webhook processing:")
+        return {"ok": False, "error": str(e)}
 
 @app.on_event("startup")
 async def on_startup_combined():
