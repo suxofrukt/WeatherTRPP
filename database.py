@@ -5,10 +5,16 @@ import datetime
 import logging
 import pytz
 
+# Загружаем переменные окружения из файла .env
 load_dotenv()
+
+# Настраиваем логгер
 logger = logging.getLogger(__name__)
+
+# Разрешённые поля для отправки алертов (например, в будущем для фильтрации)
 ALLOWED_ALERT_FIELDS = {"last_alert_sent_at", "last_precip_alert_at"}
 
+# Создание пула соединений с базой данных PostgreSQL
 async def get_pool():
     return await asyncpg.create_pool(
         user=os.getenv("POSTGRES_USER"),
@@ -16,11 +22,11 @@ async def get_pool():
         database=os.getenv("POSTGRES_DB"),
         host=os.getenv("POSTGRES_HOST"),
         port=int(os.getenv("POSTGRES_PORT")),
-        ssl="require",
-        statement_cache_size=0
+        ssl="require",  # Обязательное SSL-соединение
+        statement_cache_size=0  # Отключение кэширования SQL-запросов (можно настроить при необходимости)
     )
 
-
+# Сохраняем запрос пользователя к погоде в таблицу
 async def save_request(pool, username, city, dt):
     async with pool.acquire() as connection:
         await connection.execute(
@@ -28,6 +34,7 @@ async def save_request(pool, username, city, dt):
             username, city, dt
         )
 
+# Получаем историю последних 10 запросов пользователя
 async def get_history(pool, username):
     async with pool.acquire() as conn:
         rows = await conn.fetch("""

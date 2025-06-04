@@ -19,14 +19,12 @@ from database import (
     get_pool, save_request, get_history,
     add_subscription, remove_subscription, get_user_subscriptions,
     get_all_active_subscriptions_with_details, update_last_alert_time, update_last_daily_sent_time
-    # get_active_subscriptions_for_notification - если старая функция send_weather_notification не используется, это тоже не нужно
 )
 
 # APScheduler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-# from pytz import utc # pytz.utc используется напрямую
 
 # Загрузка .env
 load_dotenv()
@@ -151,7 +149,7 @@ async def process_current_weather_city(message: Message, state: FSMContext):
     weather_info = await get_weather(city)
     await message.answer(weather_info, reply_markup=main_menu_keyboard())
 
-    # Сохранение в историю (опционально, как у тебя было)
+    # Сохранение в историю (опционально)
     if message.from_user and message.from_user.username and "Ошибка:" not in weather_info:
         try:
             await save_request(pool, message.from_user.username, city, datetime.datetime.now())
@@ -868,3 +866,7 @@ async def on_shutdown():
     if scheduler and scheduler.running: scheduler.shutdown(); logger.info("APScheduler shut down.")
     if pool: await pool.close(); logger.info("Database pool closed.")
     logger.info("API: Application shutdown sequence completed.")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api:app", host="0.0.0.0", port=8000)
